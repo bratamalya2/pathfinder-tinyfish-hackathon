@@ -1,0 +1,10 @@
+{
+  "name": "pathfinder-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test"
+  }
+}
