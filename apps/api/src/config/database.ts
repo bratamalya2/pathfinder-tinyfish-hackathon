@@ -1,7 +1,7 @@
-import neo4j from 'neo4j-driver';
+import neo4j, { Driver } from 'neo4j-driver';
 import { ENV } from './env';
 
-let driver: neo4j.Driver;
+let driver: Driver;
 
 export function initDatabase() {
   try {
