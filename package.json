@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "pnpm --parallel -r dev",
     "build": "pnpm -r build",
-    "start": "pnpm --filter pathfinder-api start",
+    "start": "pnpm --parallel --filter pathfinder-api --filter web dev",
     "test": "pnpm -r test"
   }
 }
