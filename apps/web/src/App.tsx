@@ -3,6 +3,7 @@ import StarField from './components/StarField';
 import IntakeForm from './components/IntakeForm';
 import SmartLoadingState from './components/SmartLoadingState';
 import CurriculumTimeline from './components/CurriculumTimeline';
+import LocationGate from './components/LocationGate';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api';
@@ -19,8 +20,11 @@ type AppView = 'landing' | 'loading' | 'results';
 function App() {
   const [view, setView] = useState<AppView>('landing');
   const [jobId, setJobId] = useState<string | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
   const [status, setStatus] = useState('PENDING');
   const [courses, setCourses] = useState<Course[]>([]);
+  const [marketTrends, setMarketTrends] = useState<string[]>([]);
+  const [projects, setProjects] = useState<any[]>([]);
   const [careerGoal, setCareerGoal] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [scrollY, setScrollY] = useState(0);
@@ -44,7 +48,9 @@ function App() {
         setStatus(data.status);
 
         if (data.status === 'COMPLETED' && data.result) {
-          setCourses(data.result.data);
+          setCourses(data.result.courses);
+          setMarketTrends(data.result.marketTrends || []);
+          setProjects(data.result.suggestedProjects || []);
           setView('results');
           clearInterval(interval);
         }
@@ -65,6 +71,10 @@ function App() {
   }, [jobId, view]);
 
   const handleSubmit = async (data: { careerGoal: string; currentLevel: string }) => {
+    if (!location) {
+      setError('Location access is required to generate a path.');
+      return;
+    }
     setError(null);
     setCareerGoal(data.careerGoal);
     setView('loading');
@@ -74,7 +84,7 @@ function App() {
       const res = await fetch(`${API_BASE}/curriculum/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, location }),
       });
       const resData = await res.json();
       setJobId(resData.jobId);
@@ -88,12 +98,15 @@ function App() {
     setView('landing');
     setJobId(null);
     setCourses([]);
+    setMarketTrends([]);
+    setProjects([]);
     setStatus('PENDING');
     setError(null);
   };
 
   return (
     <div className="app">
+      {!location && <LocationGate onLocationGranted={(loc) => setLocation(loc)} />}
       <StarField />
 
       {/* Ambient background effects */}
@@ -171,7 +184,13 @@ function App() {
 
         {view === 'results' && (
           <section className="section-results">
-            <CurriculumTimeline courses={courses} careerGoal={careerGoal} onReset={handleReset} />
+            <CurriculumTimeline 
+              courses={courses} 
+              careerGoal={careerGoal} 
+              marketTrends={marketTrends}
+              suggestedProjects={projects}
+              onReset={handleReset} 
+            />
           </section>
         )}
       </main>

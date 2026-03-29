@@ -45,4 +45,30 @@ export class SynthesisService {
     const parsed = JSON.parse(completion.choices[0].message.content || '{"courses": []}');
     return parsed.courses as CourseNode[];
   }
+
+  /**
+   * Extract structured market demand signals from recruiter-style agent output.
+   */
+  static async extractMarketSignals(rawMarketOutput: string): Promise<string[]> {
+    console.log(`[SynthesisService] Processing market data with OpenAI/LLM...`);
+
+    if (ENV.USE_MOCKS) {
+      console.log(`[SynthesisService] 🧪 MOCK MODE: Returning market signals...`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return ['React', 'Node.js', 'TypeScript', 'Docker', 'PostgreSQL'];
+    }
+
+    const { default: OpenAI } = await import('openai');
+    const openai = new OpenAI({ apiKey: ENV.OPENAI_API_KEY });
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'You are a job market analyst. Extract the most important technical skills mentioned in the following text. Return a JSON object with a key "skills" which is an array of strings (the skill names).' },
+        { role: 'user', content: rawMarketOutput }
+      ]
+    });
+    const parsed = JSON.parse(completion.choices[0].message.content || '{"skills": []}');
+    return parsed.skills as string[];
+  }
 }

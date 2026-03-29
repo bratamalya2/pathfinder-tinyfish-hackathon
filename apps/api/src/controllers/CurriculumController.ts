@@ -8,14 +8,14 @@ export class CurriculumController {
    */
   static async generateCurriculum(req: Request, res: Response): Promise<void> {
     try {
-      const { careerGoal, currentLevel } = req.body;
+      const { careerGoal, location, currentLevel } = req.body;
 
-      if (!careerGoal || !currentLevel) {
-        res.status(400).json({ error: 'Missing required fields: careerGoal, currentLevel' });
+      if (!careerGoal || !location || !currentLevel) {
+        res.status(400).json({ error: 'Missing required fields: careerGoal, location, currentLevel' });
         return;
       }
 
-      const jobId = CurriculumOrchestrator.startCurriculumGeneration(careerGoal, currentLevel);
+      const jobId = CurriculumOrchestrator.startCurriculumGeneration(careerGoal, location, currentLevel);
       res.status(202).json({ 
         message: 'Curriculum generation started.', 
         jobId,

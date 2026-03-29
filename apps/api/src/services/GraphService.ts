@@ -184,6 +184,70 @@ export class GraphService {
   }
 
   /**
+   * Persists market demand skills for a specific career and location.
+   */
+  static async saveMarketDemand(careerGoal: string, location: string, skills: string[]) {
+    const driver = getDatabaseDriver();
+    const session = driver.session({ database: ENV.NEO4J_DATABASE });
+
+    try {
+      console.log(`[GraphService] Saving market demand for "${careerGoal}" in "${location}"...`);
+
+      for (const skillName of skills) {
+        await session.run(
+          `
+          MATCH (c:Career {name: $careerGoal})
+          MERGE (m:MarketDemand {location: $location, skill: $skillName})
+          MERGE (c)-[:TRENDING_IN]->(m)
+          ON CREATE SET m.updatedAt = datetime()
+          ON MATCH SET m.updatedAt = datetime()
+          `,
+          { careerGoal, location, skillName }
+        );
+      }
+      return true;
+    } catch (err) {
+      console.error('[GraphService] Failed to save market demand:', err);
+      return false;
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
+   * Links a project roadmap to a skill.
+   */
+  static async saveProjectRoadmap(skillName: string, project: any) {
+    const driver = getDatabaseDriver();
+    const session = driver.session({ database: ENV.NEO4J_DATABASE });
+
+    try {
+      await session.run(
+        `
+        MATCH (s:Skill {name: $skillName})
+        MERGE (p:Project {title: $title})
+        SET p.description = $description,
+            p.roadmap = $roadmap,
+            p.updatedAt = datetime()
+        MERGE (s)-[:PRACTICE_WITH]->(p)
+        `,
+        {
+          skillName,
+          title: project.title,
+          description: project.description,
+          roadmap: JSON.stringify(project.stages),
+        }
+      );
+      return true;
+    } catch (err) {
+      console.error('[GraphService] Failed to save project roadmap:', err);
+      return false;
+    } finally {
+      await session.close();
+    }
+  }
+
+  /**
    * Derives a skill/topic name from a course title.
    * e.g. "Complete React Developer Course" → "React Developer"
    */

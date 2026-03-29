@@ -1,12 +1,15 @@
 import { GraphService } from './GraphService';
 import { AgentService } from './AgentService';
 import { SynthesisService } from './SynthesisService';
+import { MarketService } from './MarketService';
+import { ProjectService } from './ProjectService';
 
-type JobStatus = 'PENDING' | 'SEARCHING_GRAPH' | 'SCRAPING_WEB' | 'SYNTHESIZING_DATA' | 'UPDATING_GRAPH' | 'COMPLETED' | 'FAILED';
+type JobStatus = 'PENDING' | 'ANALYZING_MARKET' | 'SEARCHING_GRAPH' | 'SCRAPING_WEB' | 'SYNTHESIZING_DATA' | 'GENERATING_PROJECTS' | 'UPDATING_GRAPH' | 'COMPLETED' | 'FAILED';
 
 export interface CurriculumJob {
   id: string;
   careerGoal: string;
+  location: string;
   currentLevel: string;
   status: JobStatus;
   result?: any;
@@ -34,11 +37,12 @@ export class CurriculumOrchestrator {
   /**
    * Starts the "Check-and-Save" process asynchronously and returns a job ID
    */
-  static startCurriculumGeneration(careerGoal: string, currentLevel: string): string {
+  static startCurriculumGeneration(careerGoal: string, location: string, currentLevel: string): string {
     const jobId = this.generateJobId();
     const job: CurriculumJob = {
       id: jobId,
       careerGoal,
+      location,
       currentLevel,
       status: 'PENDING',
     };
@@ -65,34 +69,54 @@ export class CurriculumOrchestrator {
     const job = jobStore.get(jobId);
     if (!job) throw new Error('Job not found');
 
-    // 1. Query Graph
+    // 1. Market Analysis (Scrape Job Trends)
+    job.status = 'ANALYZING_MARKET';
+    const rawMarketData = await MarketService.getMarketSignals(job.careerGoal, job.location);
+    const trendingSkills = await SynthesisService.extractMarketSignals(rawMarketData);
+
+    // 2. Query Graph
     job.status = 'SEARCHING_GRAPH';
     const graphResult = await GraphService.checkExistingCurriculumPath(job.careerGoal, job.currentLevel);
 
-    if (graphResult.pathFound) {
-      // Fast path: Data already exists in the graph!
-      job.status = 'COMPLETED';
-      job.result = { source: 'cache', data: graphResult.existingCourses };
-      return;
+    let finalCourses = graphResult.existingCourses;
+    let missingSkills = graphResult.missingSkills;
+
+    // 3. Dispatch TinyFish Agent (since path is incomplete or to supplement with market data)
+    if (!graphResult.pathFound) {
+      job.status = 'SCRAPING_WEB';
+      // Use trending skills to guide the agent!
+      const skillsToSearch = [...new Set([...missingSkills, ...trendingSkills])];
+      const rawAgentOutput = await AgentService.dispatchWebAgentMission(job.careerGoal, skillsToSearch);
+
+      // 4. Process LLM Synthesis
+      job.status = 'SYNTHESIZING_DATA';
+      const structuredNodes = await SynthesisService.extractStructuredGraphData(rawAgentOutput);
+      finalCourses = structuredNodes;
+
+      // 5. Update the Graph
+      job.status = 'UPDATING_GRAPH';
+      await GraphService.saveNewCurriculumData(job.careerGoal, structuredNodes);
+      await GraphService.saveMarketDemand(job.careerGoal, job.location, trendingSkills);
     }
 
-    // 2. Dispatch TinyFish Agent (since path is incomplete)
-    job.status = 'SCRAPING_WEB';
-    const rawAgentOutput = await AgentService.dispatchWebAgentMission(job.careerGoal, graphResult.missingSkills);
+    // 6. Generate Portfolio Projects for Top Skills
+    job.status = 'GENERATING_PROJECTS';
+    const topSkills = trendingSkills.slice(0, 2);
+    const projects = [];
+    for (const skill of topSkills) {
+      const project = await ProjectService.generateProjectRoadmap(job.careerGoal, skill);
+      await GraphService.saveProjectRoadmap(skill, project);
+      projects.push(project);
+    }
 
-    // 3. Process LLM Synthesis
-    job.status = 'SYNTHESIZING_DATA';
-    const structuredNodes = await SynthesisService.extractStructuredGraphData(rawAgentOutput);
-
-    // 4. Update the Graph
-    job.status = 'UPDATING_GRAPH';
-    const saved = await GraphService.saveNewCurriculumData(job.careerGoal, structuredNodes);
-
-    if (!saved) throw new Error('Failed to save structured data back to the graph.');
-
-    // 5. Complete Job
+    // 7. Complete Job
     job.status = 'COMPLETED';
-    job.result = { source: 'live-scrape', data: structuredNodes };
+    job.result = {
+      source: graphResult.pathFound ? 'cache' : 'live-scrape',
+      marketTrends: trendingSkills,
+      courses: finalCourses,
+      suggestedProjects: projects,
+    };
     console.log(`[Orchestrator] Job ${jobId} completed successfully!`);
   }
 }
